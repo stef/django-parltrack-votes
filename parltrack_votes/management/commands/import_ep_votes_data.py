@@ -1,4 +1,4 @@
-# -*- coding:Utf-8 -*-
+# -*- coding:utf-8 -*-
 
 # This file is part of django-parltrack-votes.
 #
@@ -32,6 +32,7 @@ from django.utils.timezone import make_aware
 from django.core.management.base import BaseCommand
 
 from parltrack_votes.models import Proposal, ProposalPart
+from parltrack_meps.models import MEP
 
 
 def get_proposal(proposal_name, proposal_title):
@@ -53,8 +54,8 @@ class Command(BaseCommand):
         print "read file", json_file
         start = datetime.now()
         number_of_new = 0
-        with transaction.commit_on_success():
-            for a, vote in enumerate(json_parser_generator(json_file)):
+        for a, vote in enumerate(json_parser_generator(json_file)):
+            with transaction.commit_on_success():
                 new = create_if_not_present_in_db(vote)
                 if new:
                     number_of_new += 1
@@ -90,11 +91,45 @@ def retrieve_json():
     os.system("unxz %s" % xz_file)
     return json_file
 
+def getmep(mep):
+    mep = mep.replace(u'\xdf', u'ss')
+    if mep.startswith('(The Earl of) '):
+        mep = mep[len('(The Earl of) '):]
+    elif mep == u'Valenciano Mart\xednez-Orozco':
+        mep = 'VALENCIANO'
+    try:
+        return MEP.objects.get(last_name__iexact = mep)
+    except MEP.DoesNotExist:
+        pass
+
+    try:
+        return MEP.objects.get(last_name_with_prefix__iexact = mep)
+    except MEP.DoesNotExist:
+        pass
+
+    try:
+        return MEP.objects.get(last_name_with_prefix__iendswith = mep)
+    except MEP.DoesNotExist:
+        pass
+
+    try:
+        return MEP.objects.get(swaped_name__iexact = mep)
+    except MEP.DoesNotExist:
+        pass
+
+    try:
+        return MEP.objects.get(swaped_name__contains = mep)
+    except MEP.DoesNotExist:
+        pass
+
+    print "wtf, not exist in db?", repr(mep)
 
 def create_if_not_present_in_db(vote):
+    vote_datetime = make_aware(parse(vote["ts"]), pytz.timezone("Europe/Brussels"))
+    if vote_datetime < make_aware(parse("2014-07-01T00:00:00.0"), pytz.timezone("Europe/Brussels")):
+        return
     cur = connection.cursor()
     proposal_name = vote.get("report", vote["title"])
-    vote_datetime = make_aware(parse(vote["ts"]), pytz.timezone("Europe/Brussels"))
     subject = "".join(vote["title"].split("-")[:-1])
     proposal = get_proposal(proposal_name, vote.get("eptitle"))
     part = vote.get("issue_type", proposal_name)
@@ -119,14 +154,15 @@ def create_if_not_present_in_db(vote):
                 for mep in group["votes"]:
                     # in_db_mep = find_matching_mep_in_db(mep)
                     if isinstance(mep, dict):
-                        mep_name = mep['orig']
+                        mep_name = mep['name']
                     else:
                         mep_name = mep
+                    m = getmep(mep_name)
                     group_name = group['group']
                     # print "Create vote for", mep_name
 
-                    args.append((choice, proposal_name, r.id, mep_name, group_name))
-    cur.executemany("INSERT INTO parltrack_votes_vote (choice, name, proposal_part_id, raw_mep, raw_group) values (%s, %s, %s, %s, %s)", args)
+                    args.append((choice, proposal_name, r.id, None if not m else m.id, mep_name, group_name))
+    cur.executemany("INSERT INTO parltrack_votes_vote (choice, name, proposal_part_id, mep_id, raw_mep, raw_group) values (%s, %s, %s, %s, %s, %s)", args)
     return True
 
 # vim:set shiftwidth=4 tabstop=4 expandtab:
