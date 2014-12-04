@@ -1,4 +1,4 @@
-# -*- coding:Utf-8 -*-
+# -*- coding:utf-8 -*-
 from django.db import models
 from parltrack_meps.models import MEP
 
@@ -15,7 +15,7 @@ class Proposal(models.Model):
         return self._date
 
     def __unicode__(self):
-        return "%s [%s]" % (self.title if self.title else "no title", self.code_name)
+        return u"%s [%s]" % (self.title if self.title else "no title", self.code_name)
 
     class Meta:
         ordering = ('-_date', )
@@ -48,4 +48,4 @@ class Vote(models.Model):
         unique_together = ("proposal_part", "mep")
 
     def __unicode__(self):
-        return '%s (%s)' % (self.name, self.choice)
+        return u'%s (%s)' % (self.name, self.choice)
